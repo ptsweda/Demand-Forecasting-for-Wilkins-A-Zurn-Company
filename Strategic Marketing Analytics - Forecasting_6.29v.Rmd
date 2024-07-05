@@ -1,0 +1,365 @@
+---
+title: "Strategic Marketing Analysis - Forecasting - Saxa 1"
+author: "Braden Donayre & Paul Sweda"
+date: "2024-07-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages & Data
+
+```{r Load Packages & Data}
+#Packages
+library(ggplot2)
+library(forecast)
+library(grid)
+library(Amelia)
+library(tseries)
+library(scales)
+library(gridExtra)
+library(lmtest)
+library(zoo)
+library(Rcpp)
+library(readxl)
+library(XLS)
+
+#Combined Data
+combined_data <- read_excel("C:\\Users\\ptswe\\Downloads\\WILKINS CASE DATA.xls", sheet = "Combined Data", range = "A2:S19")
+
+```
+
+## Exloratory Analysis & Data Preperation
+
+```{r Exploration & Preperation}
+head(combined_data)
+combined_data$Quarter <- as.Date(combined_data$Quarter, "%m/%d/%Y")
+combined_data = combined_data[-1]
+head(combined_data)
+str(combined_data)
+class(combined_data)
+summary(combined_data)
+
+hist(combined_data$`Total PVB`)
+
+
+#### Plots ####
+#Plot quarterly sales data to view seasonality for PVB
+quarterly_sales_plot_PVB <- ggplot(combined_data, aes(Quarter,`Total PVB`)) + geom_line(na.rm=TRUE) + 
+  xlab("Quarter") + ylab("PVB Unit Sales") + 
+  scale_x_date(labels = date_format(format= "%b-%Y"),breaks = date_breaks("6 months")) + 
+  stat_smooth(colour = "blue")
+
+quarterly_sales_plot_PVB   
+
+#Inferences on PVB plot: 
+  #1) There are spikes around April each year, indicating seasonality 
+  #2) The magniturde of the variation around the seasonality proportionally increases, indicating multiplicative decomposition would be reasonable approach 
+
+
+#Plot quarterly sales data to view seasonality for Fire Valve
+quarterly_sales_plot_FV <- ggplot(combined_data, aes(Quarter,`Total Fire Valve`)) + geom_line(na.rm=TRUE) + 
+  xlab("Quarter") + ylab("FV Unit Sales") + 
+  scale_x_date(labels = date_format(format= "%b-%Y"),breaks = date_breaks("6 months")) + 
+  stat_smooth(colour = "green")
+
+quarterly_sales_plot_FV  
+
+#Inferences on FV plot: 
+  #1) The plot is more smoother than PVB, indicating a trend
+  #2) The magnitude stays constant, which would mean an additive decomposition appraoch may be best
+
+
+### Split combine data into two time series objects for FV total sales and PVB total sales
+
+###PVB###
+#Converting data into a time series object for PVB
+data_ts_PVB <-ts(combined_data[,c('Total PVB')],frequency=4)
+class(data_ts_PVB)
+
+#Plot time series with trend line
+plot(data_ts_PVB, col = "blue", main = "PVB Sales Time Series Data")
+abline(reg=lm(data_ts_PVB~time(data_ts_PVB)), col="lightgray")
+
+# Regression model
+reg_PVB <- lm(data_ts_PVB~time(data_ts_PVB))
+summary(reg_PVB)
+
+#Autocorrelation and Partial Autocorrelation Plots
+Acf(data_ts_PVB)
+Pacf(data_ts_PVB)
+
+#Lag plot of Data
+gglagplot(data_ts_PVB, set.lags=1:16)
+#Ljung-Box test on the first 24 Lag autocorrelations
+Box.test(data_ts_PVB, lag=24, fitdf=0, type="Lj")
+
+# # auto_tsd <-ts(auto[,c('DAUTONSA')], frequency=12)
+# # class(auto_tsd)
+# component.ts = decompose(auto_tsd)
+# plot(component.ts)
+
+#For PVB multiplicative decomposition use the following code
+component.pvb = decompose(data_ts_PVB, type="multiplicative", filter=NULL)
+plot(component.pvb)
+
+
+###FV###
+
+#Converting data into a time series object for FV
+data_ts_FV <-ts(combined_data[,c('Total Fire Valve')],,frequency=4)
+class(data_ts_FV)
+#Plot time series with trend line
+plot(data_ts_FV, col = "green", main = "FV Sales Time Series Data")
+abline(reg=lm(data_ts_FV~time(data_ts_FV)), col="lightgray")
+# Regression model
+reg_FV <- lm(data_ts_FV~time(data_ts_FV))
+summary(reg_FV)
+#Autocorrelation and Partial Autocorrelation Plots
+Acf(data_ts_FV)
+Pacf(data_ts_FV)
+#Lag plot of Data
+gglagplot(data_ts_FV, set.lags=1:16)
+#Ljung-Box test on the first 24 Lag autocorrelations
+Box.test(data_ts_FV, lag=24, fitdf=0, type="Lj")
+#For FV Addictive decomposition 
+component.fv = decompose(data_ts_FV, type="additive", filter=NULL)
+plot(component.fv)
+
+
+
+##############4. TEST WHETHER STATIONARY SERIES##############
+adf.test(data_ts_PVB)
+
+#Augmented Dickey-Fuller Test
+#data:  PVB Time Series
+#Dickey-Fuller = -6.6546,, Lag order = 2, p-value =  0.01
+#alternative hypothesis: stationary
+
+
+adf.test(data_ts_FV)
+
+#Augmented Dickey-Fuller Test
+#data:  FV Time Series
+#Dickey-Fuller = -1.7663,, Lag order = 2, p-value =  0.6614
+#alternative hypothesis: stationary
+```
+
+## Question 2: Relationship of PVB product family (total) and FV and exogenous variables: unemployment rate, 
+## bank prime loand rate and $ of housing starts? How does this relationship affaect PVV productt family? 
+
+```{r Question 2}
+# Create a linear regression model for PVBs for all 3 exogenous variables 
+PVB_total_lm_model <- lm(`Total PVB` ~ `Unemployment Rate` + `Bank Prime Loan` + `Total`, data = combined_data)
+summary(PVB_total_lm_model)
+residuals_PVB <- residuals(PVB_total_lm_model)
+hist(residuals_PVB, main = "Histogram of PVB Residuals")   #PVB residuals are not normal 
+qqnorm(residuals_PVB, main = "QQ Plot of PVB Residuals")
+qqline(residuals_PVB)
+
+
+
+# Create a linear regression model for PVBs for just 1 exogenious - Total 
+PVB_total_lm_model_total <- lm(`Total PVB` ~  `Total`, data = combined_data)
+residuals_PVB_total <- residuals(PVB_total_lm_model_total)
+hist(residuals_PVB_total, main = "Histogram of PVB Residuals")   #PVB residuals are not normal 
+qqnorm(residuals_PVB_total, main = "QQ Plot of PVB Residuals")
+qqline(residuals_PVB_total)
+
+
+
+# Create a linear regression model for FV
+FV_total_lm_model <- lm(`Total Fire Valve` ~ `Unemployment Rate` + `Bank Prime Loan` + `Total`, data = combined_data)
+summary(FV_total_lm_model)
+
+
+
+```
+
+##3.	Create a demand forecast for the PVB product family (total) for the next three quarters of 2005. ##
+
+```{r Question 3 Demand forecast }
+
+
+```
+
+##3A.	What type of trend and seasonal pattern of demand do you find in the data for PVB?. ##
+
+```{r Question 3A Type of trend/ seasonal pattern }
+
+
+```
+
+
+## 3B.	Can you isolate the trend estimate with a linear regression model with Y = quarterly demand 
+## for PVB and X=quarters by year? What is the R-square? Is the model significant?
+##  What will you infer from the ## coefficient (Beta) estimate of the regression model?. ##
+
+```{r Question 3B Isolate the trend estimate }
+
+
+```
+
+
+## 3C.What do the ACF and PACF visuals indicate for the PVB product forecast? . ##
+
+```{r Question 3C ACF and PACF visuals }
+
+
+```
+
+
+##3D.	Compare forecast models##
+
+```{r Question 3D(i). Compare: Naïve demand forecast }
+naive_forecast <-naive(data_ts_PVB, 24)
+summary(naive_forecast)
+autoplot(naive_forecast)
+
+#Check for fitted values and residuals
+checkresiduals(naive_forecast)
+```
+
+
+```{r Question 3D(ii). Compare: Moving average (2 quarter) }
+
+#MA of order 6 months
+autoplot(data_ts_PVB, series="Data") +
+autolayer(ma(data_ts_PVB,6), series="6-MA") +
+xlab("Year") + ylab("Sales") +
+ggtitle("PVB Sales Moving Average - 6 months") +
+scale_colour_manual(values=c("Data"="grey50","6-MA"="red"),
+breaks=c("Data","6-MA"))
+
+```
+
+
+
+```{r Question 3D(iii). ARIMA model }
+
+#Making the series stationary (identify level of differencing required)
+#we need to remove trend by using appropriate order of difference and make
+#the series stationary.
+#We do this by looking at acf, Dickey-Fuller Test and standard deviation.
+#DICKEY FULLER TEST
+#(We have to test if Rho - 1 is significantly different than zero or not.
+#If the null hypothesis gets rejected, we'll get a stationary time
+#series.)
+#First, confirm that the series is non-stationary using augmented DF test
+adf.test(my_ts)
+#To convert series to stationary, we need to know the level of
+#differencing required
+#Look at ACF (autocorrelation plot for the series to identify the order of
+#differencing required)
+Acf(my_ts)
+Pacf(my_ts)
+#using differencing: lets try order 1 difference
+#We will fit ARIMA(0,d,0)(0,D,0)[12] models
+#and verify acf residuals to find which âdâ or âDâ order of
+#differencing is appropriate in our case.
+#Applying only one order of difference i.e ARIMA(0,1,0)(0,0,0)
+dfit1 <-arima(my_ts, order=c(0,1,0))
+plot(residuals(dfit1))
+Acf(residuals(dfit1))
+Pacf(residuals(dfit1))
+#Because the seasonal pattern is strong and stable,
+#we will want to use an order of seasonal differencing in the model.
+#Before that letâs try only with one seasonal difference i.e
+ARIMA(0,0,0)(0,1,0)
+dfit2 <- arima(my_ts, order =c(0,0,0), seasonal = list(order = c(0,1,0),
+period = 12))
+plot(residuals(dfit2))
+Acf(residuals(dfit2))
+Pacf(residuals(dfit2))
+#lets try and apply both seasonal and non-seasonal differencing,
+ARIMA(0,1,0)(0,1,0)[12]
+dfit3 <- arima(my_ts, order =c(0,1,0), seasonal = list(order = c(0,1,0),
+period = 12))
+plot(residuals(dfit3))
+Acf(residuals(dfit3))
+Pacf(residuals(dfit3))
+#Since first ACF is -ve and most of the positive correlations are now
+#negative (series is overdifferenced)
+#we should add an MA term to the model but to know what order of MA we
+#need,
+#check the standard deviation of the models (sd=RMSE)
+summary(dfit1)
+summary(dfit2)
+summary(dfit3)
+#We have over-differencing, so we will stop here,
+#Out of the above, dfit3 model, i.e., ARIMA(0,1,0)(0,1,0)12 has the lowest
+#standard deviation(RMSE) and AIC.
+#Therefore, it is the correct order of differencing.
+#Now, we need to identify AR/MA and SAR/SMA values and fit the model
+dfit4 <- arima(my_ts, order =c(0,1,1), seasonal = list(order = c(0,1,0),
+period = 12))
+plot(residuals(dfit4))
+Acf(residuals(dfit4))
+Pacf(residuals(dfit4))
+#Add a one-order MA component to the seasonal part and see what we get
+dfit5 <- arima(my_ts, order =c(0,1,0), seasonal = list(order = c(0,1,1),
+period = 12))
+plot(residuals(dfit5))
+Acf(residuals(dfit5))
+Pacf(residuals(dfit5))
+#combine a MA component to non-seasonal and one to seasonal
+dfit6 <- arima(my_ts, order =c(0,1,1), seasonal = list(order = c(0,1,1),
+period = 12))
+plot(residuals(dfit6))
+Acf(residuals(dfit6))
+Pacf(residuals(dfit6))
+#Pending statistically significant MA coefficient and low AIC the model
+#seems a good fit
+summary(dfit4)
+summary(dfit5)
+summary(dfit6)
+#The coeftest() function in lmtest package can help us in getting the p-
+#values of coefficients.
+#We want to check if the coefficients are significant or not
+coeftest(dfit6)
+#significance of coefficients
+par(mfrow=c(1,1))
+checkresiduals(dfit6)
+#residual diagnostics (LjungBox test tests whether errors are white noise)
+install.packages("FitAR")
+library(FitAR)
+boxresult<-LjungBoxTest(dfit6$residuals,k=1,StartLag=1) # one or more
+#errors to lag 1 are equal to 0
+#See the p values (if your p values are greater than 0.05, you can show
+#that your series has independent errors)
+#Note that we dont require that all p values are larger than 0.05
+boxresult
+plot(boxresult[,3],main="Ljung-Box Q Test", ylab="P-values", xlab="Lag")
+#You can see here that many residuals have lower p values at 0.05
+#significance (12 of 30 lags)
+#Check Minimum AIC and Iterate
+#We use the auto.arima() function to let R build our model with least AIC
+#this function will search through combination of order parameters and
+#provide best set
+#by default it looks at maximum order of size 5
+dfit7 <- auto.arima(my_ts, seasonal = TRUE)
+plot(residuals(dfit7))
+Acf(residuals(dfit7))
+Pacf(residuals(dfit7))
+summary(dfit7)
+coeftest(dfit7)
+checkresiduals(dfit7)
+```
+
+
+```{r Question 3D(iv). Compare Arima model with estimate of current focasting }
+
+
+```
+
+
+```{r Question 3D(v). Product family or individual producsts }
+
+
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
